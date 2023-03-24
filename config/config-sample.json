@@ -1,0 +1,29 @@
+{
+	"port" : 3000,
+        "fields" : {
+                "name" : {
+                        "label" : "Name",
+                        "validation" : "alphanumeric",
+                        "regex" : "",
+                        "required" : "true"
+                }
+                ,"email" : {
+                        "label" : "Email",
+                        "validation" : "email",
+                        "regex" : "",
+                        "required" : "true"
+                }
+                ,"phone" : {
+                        "label" : "Phone",
+                        "validation" : "numeric",
+                        "regex" : "",
+                        "required" : "false"
+                }
+	},
+	"id" : "email",
+        "auth" : {
+                "username" : "user",
+                "password" : "password123",
+                "domain" : "jempe.org"
+        }
+}
