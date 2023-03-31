@@ -6,17 +6,15 @@ import (
 	"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"net/mail"
-	"reflect"
+	"os"
 	"regexp"
 	"time"
 
 	"github.com/boltdb/bolt"
-	"github.com/spf13/viper"
 )
 
 var Db *bolt.DB
@@ -26,20 +24,57 @@ type CaptureResponse struct {
 	ErrorFields []string `json:"error_fields"`
 }
 
+type Config struct {
+	Port   int              `json:"port"`
+	Auth   AuthConfig       `json:"auth"`
+	ID     string           `json:"id"`
+	Fields map[string]Field `json:"fields"`
+}
+
+type AuthConfig struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+type Field struct {
+	Label      string `json:"label"`
+	Validation string `json:"validation,omitempty"`
+	Regex      string `json:"regex,omitempty"`
+	Required   string `json:"required,omitempty"`
+}
+
+var config Config
+
 func main() {
 	err := initDb()
 	checkErr(err)
 
-	port := flag.String("port", "8080", "Server port")
-	username := flag.String("username", "admin", "Basic auth username")
-	password := flag.String("password", "password", "Basic auth password")
-	flag.Parse()
+	err = readConfig("config/config.json", &config) // Read the config file
+	checkErr(err)
 
-	log.Println("Capture fields web service started on http://127.0.0.1:" + *port)
+	port := fmt.Sprint(config.Port)
+
+	log.Println("Capture fields web service started on http://127.0.0.1:" + port)
 
 	http.HandleFunc("/capture_data", capture_handler)
-	http.Handle("/data.csv", basicAuth(csv_handler, *username, *password))
-	panic(http.ListenAndServe(":"+*port, nil))
+	http.Handle("/data.csv", basicAuth(csv_handler, config.Auth.Username, config.Auth.Password))
+	panic(http.ListenAndServe(":"+port, nil))
+}
+
+func readConfig(filename string, config *Config) error {
+	file, err := os.Open(filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	decoder := json.NewDecoder(file)
+	err = decoder.Decode(config)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func capture_handler(w http.ResponseWriter, r *http.Request) {
@@ -163,23 +198,15 @@ func csv_handler(w http.ResponseWriter, r *http.Request) {
 	b := &bytes.Buffer{}
 	wr := csv.NewWriter(b)
 
-	fields := viper.GetStringMap("fields")
+	fieldList := config.Fields
 
 	var column_names []string
 	var column_ids []string
 
-	for field_name, _ := range fields {
-		field := reflect.ValueOf(fields[field_name])
+	for fieldName, field := range fieldList {
 
-		for _, key := range field.MapKeys() {
-			v := field.MapIndex(key)
-
-			if key.String() == "label" {
-				label := fmt.Sprintf("%v", v)
-				column_ids = append(column_ids, field_name)
-				column_names = append(column_names, label)
-			}
-		}
+		column_ids = append(column_ids, fieldName)
+		column_names = append(column_names, field.Label)
 
 	}
 
