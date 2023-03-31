@@ -52,7 +52,6 @@ func capture_handler(w http.ResponseWriter, r *http.Request) {
 	var response CaptureResponse
 
 	fields := viper.GetStringMap("fields")
-
 	r.ParseForm()
 
 	store_data := make(map[string]string)
