@@ -3,9 +3,7 @@ module github.com/jempe/capture_fields
 go 1.20
 
 require (
-	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2
 	github.com/boltdb/bolt v1.3.1
-	github.com/goji/httpauth v0.0.0-20160601135302-2da839ab0f4d
 	github.com/spf13/viper v1.15.0
 	github.com/stretchr/testify v1.8.1
 )

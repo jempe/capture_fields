@@ -6,16 +6,16 @@ import (
 	"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
+	"net/mail"
 	"reflect"
 	"regexp"
 	"time"
 
-	"github.com/asaskevich/govalidator"
 	"github.com/boltdb/bolt"
-	"github.com/goji/httpauth"
 	"github.com/spf13/viper"
 )
 
@@ -30,20 +30,17 @@ func main() {
 	err := initDb()
 	checkErr(err)
 
-	viper.SetConfigName("config")
-	viper.AddConfigPath("config/")
+	port := flag.String("port", "8080", "Server port")
+	username := flag.String("username", "admin", "Basic auth username")
+	password := flag.String("password", "password", "Basic auth password")
+	flag.Parse()
 
-	err = viper.ReadInConfig() // Find and read the config file
-	checkErr(err)
-
-	log.Println("Capture fields web service started on http://127.0.0.1:" + viper.GetString("port"))
+	log.Println("Capture fields web service started on http://127.0.0.1:" + *port)
 
 	http.HandleFunc("/capture_data", capture_handler)
-	http.Handle("/data.csv", httpauth.SimpleBasicAuth(viper.GetString("auth.username"), viper.GetString("auth.password"))(http.HandlerFunc(csv_handler)))
-	panic(http.ListenAndServe(":"+viper.GetString("port"), nil))
+	http.Handle("/data.csv", basicAuth(csv_handler, *username, *password))
+	panic(http.ListenAndServe(":"+*port, nil))
 }
-
-// validation values: email, numeric, url, alpha, alphanumeric, regex, "none"
 
 func capture_handler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -51,7 +48,20 @@ func capture_handler(w http.ResponseWriter, r *http.Request) {
 
 	var response CaptureResponse
 
-	fields := viper.GetStringMap("fields")
+	fields := map[string]map[string]string{
+		"name": {
+			"label":      "Name",
+			"validation": "alpha",
+			"required":   "true",
+		},
+		"email": {
+			"label":      "Email",
+			"validation": "email",
+			"required":   "true",
+		},
+		// Add more fields here
+	}
+
 	r.ParseForm()
 
 	store_data := make(map[string]string)
@@ -59,62 +69,50 @@ func capture_handler(w http.ResponseWriter, r *http.Request) {
 	var field_errors []string
 	var row_id string
 
-	for field_name, _ := range fields {
+	for field_name, field_data := range fields {
 		var field_value string
-		field_data := r.Form[field_name]
+		field_input := r.Form[field_name]
 
-		if len(field_data) > 0 {
-			field_value = field_data[0]
-		}
-
-		if field_name == viper.GetString("id") {
-			row_id = field_value
+		if len(field_input) > 0 {
+			field_value = field_input[0]
 		}
 
 		store_data[field_name] = field_value
 
-		field := reflect.ValueOf(fields[field_name])
-
-		var validation string
-		var regex string
-		var required string
-
-		for _, key := range field.MapKeys() {
-			v := field.MapIndex(key)
-
-			if key.String() == "validation" {
-				validation = fmt.Sprintf("%v", v)
-			} else if key.String() == "regex" {
-				regex = fmt.Sprintf("%v", v)
-			} else if key.String() == "required" {
-				required = fmt.Sprintf("%v", v)
-			}
-		}
+		validation := field_data["validation"]
+		required := field_data["required"]
 
 		if required == "true" && field_value == "" {
 			field_errors = append(field_errors, field_name)
 		} else if field_value != "" {
 			if validation == "email" {
-				if !govalidator.IsEmail(field_value) {
+				_, err := mail.ParseAddress(field_value)
+				if err != nil {
 					field_errors = append(field_errors, field_name)
 				}
 			} else if validation == "numeric" {
-				if !govalidator.IsNumeric(field_value) {
+				numericPattern := regexp.MustCompile(`^[0-9]+$`)
+				if !numericPattern.MatchString(field_value) {
 					field_errors = append(field_errors, field_name)
 				}
 			} else if validation == "url" {
-				if !govalidator.IsURL(field_value) {
+				urlPattern := regexp.MustCompile(`^https?:\/\/[^\s]+$`)
+				if !urlPattern.MatchString(field_value) {
 					field_errors = append(field_errors, field_name)
 				}
 			} else if validation == "alpha" {
-				if !govalidator.IsAlpha(field_value) {
+				alphaPattern := regexp.MustCompile(`^[a-zA-Z]+$`)
+				if !alphaPattern.MatchString(field_value) {
 					field_errors = append(field_errors, field_name)
 				}
 			} else if validation == "alphanumeric" {
-				if !govalidator.IsAlphanumeric(field_value) {
+
+				alphaNumericPattern := regexp.MustCompile(`^[a-zA-Z0-9]+$`)
+				if !alphaNumericPattern.MatchString(field_value) {
 					field_errors = append(field_errors, field_name)
 				}
 			} else if validation == "regex" {
+				regex := field_data["regex"]
 				re := regexp.MustCompile(regex)
 
 				if !re.MatchString(field_value) {
@@ -128,7 +126,7 @@ func capture_handler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if viper.GetString("id") == "" {
+	if row_id == "" {
 		row_id, _ = RandomString(32)
 	}
 
@@ -158,6 +156,7 @@ func capture_handler(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Fprintln(w, string(json_response))
 }
+
 func csv_handler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/csv")
 
@@ -223,6 +222,20 @@ func csv_handler(w http.ResponseWriter, r *http.Request) {
 	wr.Flush()
 
 	fmt.Fprintln(w, b)
+}
+
+func basicAuth(handler http.HandlerFunc, username, password string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user, pass, ok := r.BasicAuth()
+
+		if !ok || user != username || pass != password {
+			w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
+			http.Error(w, "Unauthorized.", http.StatusUnauthorized)
+			return
+		}
+
+		handler(w, r)
+	}
 }
 
 func initDb() (err error) {
