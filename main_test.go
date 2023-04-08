@@ -12,8 +12,10 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+var ts *httptest.Server
+
 // TestCaptureHandler_Success tests the capture_handler with valid form data.
-func TestCaptureHandler_Success(t *testing.T) {
+func TestCaptureHandler(t *testing.T) {
 	err := initDb()
 	assert.NoError(t, err)
 
@@ -33,7 +35,6 @@ func TestCaptureHandler_Success(t *testing.T) {
 
 	body, err := ioutil.ReadAll(resp.Body)
 	assert.NoError(t, err)
-	defer resp.Body.Close()
 
 	var captureResponse CaptureResponse
 	err = json.Unmarshal(body, &captureResponse)
@@ -41,6 +42,25 @@ func TestCaptureHandler_Success(t *testing.T) {
 
 	assert.True(t, captureResponse.Success)
 	assert.Empty(t, captureResponse.ErrorFields)
+
+	resp.Body.Close()
+
+	formData = "name=John&email=johndfsd"
+	resp, err = http.Post(ts.URL, "application/x-www-form-urlencoded", strings.NewReader(formData))
+	assert.NoError(t, err)
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	body, err = ioutil.ReadAll(resp.Body)
+	assert.NoError(t, err)
+
+	err = json.Unmarshal(body, &captureResponse)
+	assert.NoError(t, err)
+
+	assert.False(t, captureResponse.Success)
+	assert.NotEmpty(t, captureResponse.ErrorFields)
+
+	resp.Body.Close()
 
 	ts.Close()
 }
