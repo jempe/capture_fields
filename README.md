@@ -39,6 +39,7 @@ auth.password = "password"
 There are two endpoints provided by the web service:
 
 /capture_data: Accepts POST requests with form data for capturing and validation based on the field rules defined in the configuration file.
+
 /data.csv: Returns a CSV file with the captured data, requires HTTP Basic authentication with the credentials defined in the configuration file.
 
 
@@ -54,9 +55,15 @@ There are two endpoints provided by the web service:
 The program contains the following functions:
 
 main(): Initializes the database, reads the configuration file, and sets up the HTTP server.
+
 capture_handler(w http.ResponseWriter, r *http.Request): Handles the /capture_data endpoint for capturing and validating form data.
+
 csv_handler(w http.ResponseWriter, r *http.Request): Handles the /data.csv endpoint for exporting captured data as a CSV file.
+
 initDb(): Initializes the BoltDB database.
+
 checkErr(err error): Checks for errors and panics if any are found.
+
 RandomBytes(length int): Generates random bytes of the specified length.
+
 RandomString(length int): Generates a random string of the specified length.
