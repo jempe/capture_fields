@@ -1,4 +1,4 @@
-# Captured Data Service
+# Capture Data Service
 
 This Golang program provides a web service for capturing and validating user input data based on a pre-defined set of field rules. The captured data is stored in a BoltDB database, and can be exported as a CSV file.
 
